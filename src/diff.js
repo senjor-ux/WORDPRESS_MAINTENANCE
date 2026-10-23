@@ -1,0 +1,1 @@
+// Compares current snapshots with previous ones

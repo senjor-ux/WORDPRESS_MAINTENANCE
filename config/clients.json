@@ -1,0 +1,20 @@
+[
+  {
+    "client_id": "test-site-01",
+    "url": "https://localhost/mywordpress",
+    "username_env": "WP_CLIENT_1_USERNAME",
+    "application_password": "WP_CLIENT_1_PASSWORD"
+  },
+  {
+    "client_id": "test-site-02",
+    "url": "https://localhost/mywordpress",
+    "username_env": "WP_CLIENT_1_USERNAME",
+    "application_password": "WP_CLIENT_1_PASSWORD"
+  },
+  {
+    "client_id": "test-site-03",
+    "url": "https://localhost/mywordpress",
+    "username_env": "WP_CLIENT_1_USERNAME",
+    "application_password": "WP_CLIENT_1_PASSWORD"
+  }
+]
