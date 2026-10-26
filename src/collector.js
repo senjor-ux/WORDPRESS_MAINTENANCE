@@ -1,19 +1,27 @@
-const path = require("path");
-require("dotenv").config({ path: path.join(__dirname, "../.env") });
+const https = require("https");
+const axios = require("axios");
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+const agent = new https.Agent({ rejectUnauthorized: false });
 
-const getData = (url, credentials) => {
-  return fetch(`${url}/wp-json/agency/v1/maintenance-status`, {
-    method: "GET",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/json",
-    },
-  }).then((res) => {
-    if (!res.ok) throw new Error(`HTTP Error. Status: ${res.status}`);
-    return res.json();
-  });
-};
+async function getData(url, credentials) {
+  try {
+    const res = await axios.get(`${url}/wp-json/agency/v1/maintenance-status`, {
+      headers: { Authorization: `Basic ${credentials}` },
+      httpsAgent: agent,
+      timeout: 15000,
+    });
+
+    if (typeof res.data !== "object") {
+      throw new Error("Response is not JSON");
+    }
+    return res.data;
+  } catch (err) {
+    if (err.response)
+      throw new Error(`HTTP Error. Status: ${err.response.status}`);
+    if (err.code === "ECONNABORTED")
+      throw new Error("Timed out after 15 seconds");
+    throw new Error(err.code || err.message);
+  }
+}
 
 module.exports = { getData };

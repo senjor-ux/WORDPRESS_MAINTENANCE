@@ -1,70 +1,49 @@
-const fs = require("fs");
 const path = require("path");
+const { readCSVObjects } = require("./csv");
 
-function parseCSVLine(line) {
-  const result = [];
-  let current = "";
-  let inQuotes = false;
+const allowedStatuses = [
+  "active",
+  "expired",
+  "not_required",
+  "unknown",
+  "to_verify",
+];
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === "," && !inQuotes) {
-      result.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-  return result.map((val) => val.replace(/^"|"$/g, ""));
+function cleanStatus(value) {
+  let status = (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (status === "verify" || status === "check") status = "to_verify";
+  return allowedStatuses.includes(status) ? status : "unknown";
 }
 
 function loadLicenseRegister() {
-  const csvPath = path.join(__dirname, "../config/licenses.csv");
-  if (!fs.existsSync(csvPath)) return new Map();
-
-  const content = fs.readFileSync(csvPath, "utf8");
-  const lines = content.split("\n").filter((l) => l.trim() !== "");
-  if (lines.length <= 1) return new Map();
-
-  const headers = parseCSVLine(lines[0]);
+  const rows = readCSVObjects(path.join(__dirname, "../data/licenses.csv"));
   const licenseMap = new Map();
 
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
-    const row = {};
-    headers.forEach((h, index) => {
-      row[h] = values[index] || "";
-    });
-
-    // Unique composite key: site_id + plugin_identifier
-    const key = `${row.site_id}:::${row.plugin_identifier}`;
-    licenseMap.set(key, row);
+  for (const row of rows) {
+    licenseMap.set(`${row.site_id}:::${row.plugin_identifier}`, row);
   }
-
   return licenseMap;
 }
 
-function mergeLicenses(normalizedPlugins) {
+function mergeLicenses(plugins) {
   const licenseMap = loadLicenseRegister();
 
-  return normalizedPlugins.map((plugin) => {
-    const key = `${plugin.site_id}:::${plugin.plugin_identifier}`;
-    const licenseInfo = licenseMap.get(key);
+  return plugins.map((plugin) => {
+    const info =
+      licenseMap.get(`${plugin.site_id}:::${plugin.plugin_identifier}`) || {};
 
     return {
       ...plugin,
-      license_status: licenseInfo ? licenseInfo.license_status : "unknown",
-      expiry_date: licenseInfo ? licenseInfo.expiry_date : "unknown",
-      vendor: licenseInfo ? licenseInfo.vendor : "unknown",
-      owner: licenseInfo ? licenseInfo.owner : "unknown",
-      verification_source: licenseInfo
-        ? licenseInfo.verification_source
-        : "unknown",
-      verified_at: licenseInfo ? licenseInfo.verified_at : "unknown",
-      notes: licenseInfo ? licenseInfo.notes : "",
+      license_status: cleanStatus(info.license_status),
+      expiry_date: info.expiry_date || "unknown",
+      vendor: info.vendor || "unknown",
+      owner: info.owner || "unknown",
+      verification_source: info.verification_source || "unknown",
+      verified_at: info.verified_at || "unknown",
+      notes: info.notes || "",
     };
   });
 }

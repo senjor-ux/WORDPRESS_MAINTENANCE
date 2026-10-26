@@ -3,45 +3,55 @@ const clients = require("../config/clients.json");
 const { getData } = require("./collector");
 const { normalizeClientData } = require("./normalizer.js");
 const { saveNormalizedDataToCSV } = require("./exporter");
-const {
-  saveSnapshot,
-  getPreviousSnapshot,
-  compareSnapshots,
-} = require("./snapshot");
+const { saveSnapshot, getPreviousSnapshot } = require("./snapshot");
+const { compareSnapshots } = require("./diff");
 const { mergeLicenses } = require("./license");
 const { generateAllReports } = require("./reporter");
 
-require("dotenv").config({ path: path.join(__dirname, "../.env") });
+require("dotenv").config({
+  path: path.join(__dirname, "../.env"),
+  quiet: true,
+});
+
+async function processClient(client) {
+  const username = process.env[client.username_env];
+  const password =
+    process.env[client.password_env || client.application_password];
+
+  try {
+    if (!username || !password) {
+      throw new Error("Missing username or password in .env");
+    }
+
+    const credentials = Buffer.from(`${username}:${password}`).toString(
+      "base64",
+    );
+    const rawData = await getData(client.url, credentials);
+
+    const normalized = normalizeClientData(client, rawData);
+    normalized.plugins = mergeLicenses(normalized.plugins);
+
+    const diff = compareSnapshots(
+      normalized,
+      getPreviousSnapshot(client.client_id),
+    );
+    saveSnapshot(normalized);
+    saveNormalizedDataToCSV(normalized);
+    return { normalized, diff };
+  } catch (err) {
+    console.error(`Failed to process ${client.client_id}: ${err.message}`);
+
+    const failed = normalizeClientData(client, null, err.message);
+    saveSnapshot(failed);
+    saveNormalizedDataToCSV(failed);
+    return { normalized: failed, diff: compareSnapshots(failed, null) };
+  }
+}
 
 (async () => {
-  const diffResultsMap = new Map();
-
-  await Promise.all(
-    clients.map(async (x) => {
-      const username = process.env[x.username_env];
-      const password = process.env[x.application_password];
-      const credentials = Buffer.from(`${username}:${password}`).toString(
-        "base64",
-      );
-
-      try {
-        const rawData = await getData(x.url, credentials);
-        let normalized = normalizeClientData(x, rawData, null);
-
-        normalized.plugins = mergeLicenses(normalized.plugins);
-
-        const priorSnapshot = getPreviousSnapshot(x.client_id);
-        const diffResult = compareSnapshots(normalized, priorSnapshot);
-        diffResultsMap.set(x.client_id, diffResult);
-
-        saveSnapshot(normalized);
-        saveNormalizedDataToCSV(normalized);
-      } catch (err) {
-        normalizeClientData(x, null, err.message);
-        console.error(`Failed to process ${x.client_id}:`, err.message);
-      }
-    }),
-  );
-
-  generateAllReports(diffResultsMap);
-})();
+  const results = await Promise.all(clients.map(processClient));
+  await generateAllReports(results);
+})().catch((err) => {
+  console.error(`Audit aborted: ${err.message}`);
+  process.exit(1);
+});
